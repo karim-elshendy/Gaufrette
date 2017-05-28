@@ -56,7 +56,7 @@ class AwsS3 implements Adapter,
      * Gets the publicly accessible URL of an Amazon S3 object.
      *
      * @param string $key     Object key
-     * @param array  $options Associative array of options used to buld the URL
+     * @param array  $options Associative array of options used to build the URL
      *                        - expires: The time at which the URL should expire
      *                        represented as a UNIX timestamp
      *                        - Any options available in the Amazon S3 GetObject
@@ -66,12 +66,36 @@ class AwsS3 implements Adapter,
      */
     public function getUrl($key, array $options = [])
     {
-        return $this->service->getObjectUrl(
-            $this->bucket,
-            $this->computePath($key),
-            isset($options['expires']) ? $options['expires'] : null,
-            $options
-        );
+        $expires = isset($options['expires']) ? $options['expires'] : null;
+
+        # aws SDK v2 condition
+        if ($this->service instanceof \Aws\Common\Client\AbstractClient) {
+            return $this->service->getObjectUrl(
+                $this->bucket,
+                $this->computePath($key),
+                $expires,
+                $options
+            );
+        }
+        # aws SDK v3 condition
+        elseif ($this->service instanceof \Aws\AwsClient) {
+            if ($expires) {
+                $cmd = $this->service->getCommand('GetObject', [
+                    'Bucket' => $this->bucket,
+                    'Key'    => $this->computePath($key)
+                ]);
+
+                $request = $this->service->createPresignedRequest($cmd, $expires);
+                return $request->getUri()->__toString();
+            } else {
+                return $this->service->getObjectUrl(
+                    $this->bucket,
+                    $this->computePath($key)
+                );
+            }
+        }
+
+        return null;
     }
 
     /**
